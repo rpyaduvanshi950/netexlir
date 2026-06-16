@@ -1,0 +1,66 @@
+You are helping me build a submission for a hackathon. Read the project brief
+(AIgnition_Project_Brief_2026.pdf) in this directory if present. The dataset CSVs
+are in a folder in this directory — find it yourself.
+
+# Goal
+Build an AI-assisted ecommerce forecasting utility that predicts future revenue
+and ROAS as PROBABILISTIC RANGES (not single numbers), for 30/60/90-day windows,
+from historical marketing + sales data (GA4 source/medium + Shopify, covering
+Google/Meta/MS Ads). It must also: accept future media-budget inputs and simulate
+the effect on revenue/ROAS, and use an LLM to explain forecasts, flag anomalies,
+and surface operational risks. Use the attribution in the data AS-IS — do NOT build
+a custom attribution engine or full Media Mix Model. Forecasts are aggregate-period,
+not daily.
+
+# Work in strict phases. Stop and summarize after each phase before moving on.
+
+## Phase 0 — Token discipline (apply throughout)
+- NEVER read full CSVs into context. Inspect with shell first: `ls`, `wc -l`,
+  `head`, then a small Python script that prints ONLY summaries
+  (df.shape, df.columns, df.dtypes, df.describe(), df.head(3),
+  value_counts() on key categorical cols). Sample large files, don't dump them.
+- Write findings to short markdown files on disk (e.g. notes/data_profile.md,
+  notes/methodology.md) and refer back to those instead of re-reading raw data.
+- Keep your own console output terse. Don't echo large dataframes or repeat info
+  already captured in a notes file.
+- Maintain a notes/plan.md TODO checklist and update it as you go, so state lives
+  on disk rather than in context.
+
+## Phase 1 — Data understanding
+Profile every CSV: columns, date range, granularity, how channels/campaigns/
+campaign-types are labeled, and whether BOTH spend and revenue exist (needed for
+ROAS). Identify join keys across files, missing/dirty data, and seasonality signal.
+Write a data dictionary + data-quality notes to notes/data_profile.md.
+Deliverable: a clear written profile. No modeling yet.
+
+## Phase 2 — Methodology proposal (on paper, in notes/methodology.md)
+Propose and justify: (a) the forecasting model(s), (b) HOW you'll produce
+uncertainty ranges (e.g. prediction intervals / quantile / Monte Carlo — pick one),
+(c) how budget maps to revenue including diminishing returns, (d) how seasonality
+is handled, (e) the LLM integration plan (inputs, outputs, prompts). List
+assumptions and limitations. WAIT for my approval before building.
+
+## Phase 3 — Forecasting core (highest priority)
+Build the core first as a vertical slice: aggregate revenue + blended ROAS forecast
+with ranges, for 30/60/90 days. Validate it makes sense before adding breadth.
+
+## Phase 4 — Breadth + budget simulation
+Add channel / campaign-type / campaign-level breakdowns (same logic on filtered
+slices) and the budget-input simulation.
+
+## Phase 5 — LLM layer
+Generate plain-English forecast explanations, anomaly interpretation, and risk
+flags from the forecast outputs.
+
+## Phase 6 — Prototype UI + docs
+A minimal interface to demo ingestion → forecast → budget sim → AI insights.
+Then draft the technical documentation and architecture overview per the brief.
+
+# Rules
+- Treat this as a PROTOTYPE, not a SaaS product. Favor a working narrow slice over
+  a broad broken one.
+- State assumptions explicitly wherever you make them.
+- Ask me before installing heavy dependencies or making big architectural choices.
+- After each phase, give me a 3-5 line summary and wait.
+
+Start with Phase 0 + Phase 1 only.
