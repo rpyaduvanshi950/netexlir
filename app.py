@@ -796,7 +796,7 @@ python3 src/train.py --output ./pickle/model.pkl
 export GOOGLE_API_KEY=AIza...
 
 # Optional: change the Gemini model
-export NETEXLIR_MODEL=gemini-2.5-flash
+export NETEXLIR_MODEL=gemini-3.5-flash
 
 # Optional: point to a different data directory
 export DATA_DIR=/path/to/your/csvs
