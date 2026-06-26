@@ -15,6 +15,9 @@ echo ""
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
+# Install pipeline-only deps (pyarrow, scikit-learn, joblib) if not present
+pip3 install -q -r requirements-pipeline.txt 2>/dev/null || true
+
 # Step 1 — Generate features from raw CSVs
 echo "[1/2] Generating features…"
 python3 src/generate_features.py \
