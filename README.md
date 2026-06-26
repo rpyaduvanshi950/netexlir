@@ -1,31 +1,67 @@
 # Netexlir — AI-Assisted Ecommerce Forecasting
 
-A hackathon prototype that turns raw ad-platform CSVs into probabilistic revenue and ROAS forecasts, budget simulations, anomaly detection, and plain-English AI insights — all in one Streamlit dashboard.
+**Live Demo:** https://netexlir.streamlit.app
+
+**GitHub:** https://github.com/rpyaduvanshi950/netexlir
+
+A forecasting tool that turns raw ad-platform CSVs into probabilistic revenue and ROAS forecasts, budget simulations, anomaly detection, and plain-English AI insights — built for the AIgnition 3.0 Hackathon by NetElixir.
+
+---
+
+## The Problem
+
+Digital marketing agencies managing ecommerce ad spend face three questions every week that existing tools answer poorly:
+
+1. **What will revenue look like next month?** Most tools return a single number. That single number is almost always wrong and gives no sense of the range of outcomes.
+2. **What happens if we shift the budget?** Most simulators assume linear returns — spend 2× more, earn 2× more. Ad platforms do not work that way.
+3. **What is going wrong right now, and why?** Anomalies get buried in dashboards. Plain-English explanations are nowhere.
+
+We built a system that answers all three with honest uncertainty quantification, a realistic budget model, and AI-generated explanations.
 
 ---
 
 ## What We Built
 
-We built a full forecasting pipeline for ecommerce marketing teams who need to answer three questions:
+### Probabilistic Forecasting (not point estimates)
 
-1. **What will revenue and ROAS look like in the next 30, 60, and 90 days?**
-2. **What happens to revenue if we increase or decrease our ad budgets?**
-3. **What is going wrong in our data right now, and why?**
+We use Facebook Prophet with a log-transformed revenue target and a log(spend) regressor. Every forecast is a range — an 80% prediction interval generated via 500 Monte Carlo samples. The tool reports lower, point, and upper estimates for 30, 60, and 90-day horizons at four levels: aggregate, channel, campaign type, and individual campaign.
 
-The tool ingests historical ad data from three platforms (Google Ads, Meta Ads, Bing Ads), trains probabilistic time-series models, simulates budget scenarios with diminishing returns, detects anomalies in recent performance, and generates plain-English explanations using the Google Gemini API.
+Key engineering decisions:
+- **Log-transform target** (`log1p(revenue)`) prevents negative extrapolation and stabilises variance across the data range.
+- **Spend regressor** (`log1p(daily_spend)`) encodes diminishing returns directly into the model. When you change the budget in the simulator, the model uses the learned log-linear relationship — not a linear extrapolation.
+- **Revenue floor** (`max(10th-pct rolling window, 5% avg-rate × days)`) prevents the lower CI from collapsing to zero on low-revenue channels.
+- **ROAS CI** derived from historical rolling-window coefficient of variation, not raw Prophet bounds (which produced 0×–136× intervals on our data).
+- **In-memory model cache** keyed by slice label + MD5 data hash — Prophet never retrains on the same data twice in a session.
+- **Promo holiday calendar** covers Black Friday, Cyber Monday, Prime Day, Memorial Day, Labor Day, and Christmas week.
 
----
+### Budget Simulation with Diminishing Returns
 
-## The Problem We Solved
+The simulator takes per-channel daily budgets, runs them through the trained Prophet model as regressor inputs, and returns projected revenue and ROAS at 30/60/90 days. Because spend enters the model as `log1p(spend)`, the relationship is inherently sub-linear. Increasing the Google budget by 50% produces a smaller-than-50% revenue lift, which matches how ad platforms actually behave at scale.
 
-Most forecasting tools give a single-number prediction ("you will make $300K next month"). That is misleading — there is genuine uncertainty in ad performance, and marketers need to know the range of outcomes to make good budget decisions.
+### Anomaly Detection
 
-We also found that budget simulation tools usually assume linear returns: spend 2× more → earn 2× more. That is wrong. Ad platforms have diminishing returns at scale.
+Three anomaly types are detected on a rolling 90-day lookback:
 
-**We solved both problems:**
+- **Revenue spike or drop** — rolling 14-day z-score ≥ 2.5σ
+- **ROAS collapse** — ROAS drops more than 2.5σ below the 14-day mean
+- **Spend-revenue decoupling** — weekly spend rises ≥ 20% but revenue falls ≥ 10%
 
-- All forecasts are **probabilistic ranges** (80% prediction intervals), not single numbers.
-- Budget simulation uses a **log(spend) regressor** inside Prophet, so the model naturally captures diminishing returns — doubling spend produces less than double revenue.
+Results are ranked by severity and surfaced in a structured table with dates, channels, and magnitudes.
+
+### AI Insights via Google Gemini
+
+Four structured prompt functions call the Gemini API (`gemini-2.0-flash`):
+
+- `explain_forecast()` — interprets the 30/60/90d forecast in business terms
+- `explain_budget_simulation()` — explains what a budget shift means for ROAS and efficiency
+- `interpret_anomalies()` — gives a likely cause and recommended action for each anomaly
+- `flag_risks()` — surfaces 4 prioritised operational risks with mitigations
+
+Each function is independent and wrapped in a try/except — one API failure does not block the others. The model is configurable via the `NETEXLIR_MODEL` environment variable.
+
+### Schema-Robust Data Loader
+
+The loader detects column names from alias lists so the pipeline survives variations in held-out test data. For example, a date column named `TimePeriod`, `date_start`, `segments_date`, `date`, or `Date` all resolve to the same canonical field. Google spend in micros is auto-detected and converted. Missing channels are skipped with a warning rather than crashing the pipeline.
 
 ---
 
@@ -39,55 +75,17 @@ We also found that budget simulation tools usually assume linear returns: spend 
 
 **Combined:** 887 daily rows · 136 campaigns · $11.09M total revenue · $2.18M total spend
 
-Key assumptions made during data analysis:
-- Meta's `conversion` column is attributed revenue in USD (confirmed via cost-per-conversion analysis).
-- Google's `metrics_cost_micros` divided by 1,000,000 gives spend in USD.
-- Attribution used as-is — no cross-platform deduplication was applied.
-- No GA4 or Shopify data was present; all revenue comes from ad-platform reports only.
-
----
-
-## Our Approach
-
-### Forecasting Engine — Facebook Prophet
-
-We chose Prophet over SARIMA/XGBoost because:
-- It handles **weekly and yearly seasonality** out of the box.
-- It has explicit **holiday/promo event dampening** (Black Friday, Cyber Monday, Prime Day, etc.).
-- It produces native **Monte Carlo prediction intervals** (80% CI via 500–1000 uncertainty samples).
-- It works on 887 data points without overfitting.
-
-**Key implementation decisions:**
-
-- **Log-transform target**: We fit on `log1p(revenue)` to prevent negative extrapolation. Back-transformed with `expm1()`.
-- **Spend regressor**: `log1p(daily_spend)` added as a regressor so budget changes influence forecasts.
-- **Revenue floor**: `max(10th-pct of rolling window sums, 5% of avg-rate × days)` prevents the lower CI from collapsing to $0.
-- **ROAS CI**: Derived from historical rolling-window ROAS coefficient of variation, not raw Prophet bounds (which produced 0×–136× intervals).
-- **In-memory model cache**: Keyed by `(slice_label, y_col, add_spend_regressor, log_transform)` + MD5 data hash so Prophet never retrains on the same data twice in a session.
-
-### Anomaly Detection
-
-Three types detected on a rolling 90-day lookback:
-
-1. **Revenue spike/drop** — rolling 14-day z-score ≥ 2.5σ
-2. **ROAS collapse** — ROAS drops > 2.5σ below 14-day mean
-3. **Spend-revenue decoupling** — spend rises ≥ 20% WoW but revenue falls ≥ 10% WoW
-
-### LLM Layer — Google Gemini
-
-Four prompt functions generate plain-English output from the structured forecast data:
-- `explain_forecast()` — what the numbers mean and what's driving them
-- `explain_budget_simulation()` — what the budget change implies for ROI
-- `interpret_anomalies()` — likely cause and whether each anomaly needs action
-- `flag_risks()` — 4 operational risks with mitigations
-
-All functions are independent and wrapped in try/except so a single API failure does not block the others.
+Data assumptions:
+- Meta's `conversion` column is attributed revenue in USD, confirmed via cost-per-conversion analysis against known benchmarks.
+- Google's `metrics_cost_micros` is divided by 1,000,000 to get USD spend. Auto-detected when the median column value exceeds 10,000.
+- No cross-platform attribution deduplication was applied.
+- No GA4 or Shopify data was available — all revenue is sourced from ad-platform reports.
 
 ---
 
 ## Results
 
-### Historical Performance (All Time)
+### Historical Performance
 
 | Metric | Value |
 |---|---|
@@ -95,14 +93,6 @@ All functions are independent and wrapped in try/except so a single API failure 
 | Total Ad Spend | $2,181,943 |
 | Blended ROAS | 5.09× |
 | Date Range | Jan 2024 – Jun 2026 |
-
-### Trailing 30-Day Actuals
-
-| Metric | Value |
-|---|---|
-| Revenue | $342,801 |
-| Spend | $68,260 |
-| ROAS | 5.02× |
 
 ### Channel Breakdown (All Time)
 
@@ -112,9 +102,17 @@ All functions are independent and wrapped in try/except so a single API failure 
 | Meta Ads | $1,656,751 | $196,387 | 8.44× |
 | Bing Ads | $172,028 | $39,430 | 4.36× |
 
+### Trailing 30-Day Actuals
+
+| Metric | Value |
+|---|---|
+| Revenue | $342,801 |
+| Spend | $68,260 |
+| ROAS | 5.02× |
+
 ### Aggregate Forecast (80% Prediction Interval)
 
-| Window | Lower CI | Point Estimate | Upper CI | ROAS (point) |
+| Window | Lower | Point Estimate | Upper | ROAS (point) |
 |---|---|---|---|---|
 | 30 days | $130,768 | $242,283 | $442,702 | 4.35× |
 | 60 days | $272,153 | $499,420 | $916,049 | 3.79× |
@@ -122,13 +120,13 @@ All functions are independent and wrapped in try/except so a single API failure 
 
 ### Channel 30-Day Forecast
 
-| Channel | Lower CI | Point Estimate | Upper CI | ROAS (point) |
+| Channel | Lower | Point Estimate | Upper | ROAS (point) |
 |---|---|---|---|---|
 | Google Ads | $153,109 | $299,256 | $590,922 | 5.96× |
 | Meta Ads | $4,537 | $15,298 | $49,866 | 12.33× |
-| Bing Ads | — | — | — | — |
+| Bing Ads | — | — | — | insufficient data |
 
-> Bing is excluded from channel forecasts due to insufficient non-zero revenue days (below the 90-day minimum required for a stable Prophet fit).
+Bing is excluded from channel forecasts — fewer than 90 non-zero revenue days, which is the minimum required for a stable Prophet seasonal decomposition.
 
 ### Anomalies Detected (Last 90 Days)
 
@@ -136,260 +134,52 @@ All functions are independent and wrapped in try/except so a single API failure 
 |---|---|
 | High | 7 |
 | Medium | 11 |
-| **Total** | **18** |
-
-Types include revenue spikes/drops, ROAS collapses, and spend-revenue decoupling events.
+| Total | 18 |
 
 ---
 
-## Model Validation — Why Coverage Probability Beats MAPE
+## Model Validation
 
-### Walk-Forward Backtest Results
+### Walk-Forward Backtest
 
-We ran a 4-point walk-forward validation: train on data before a cutoff, predict the next 30/60/90 days, compare against actuals.
+We ran a 4-point walk-forward validation: train on all data before each cutoff date, forecast 30/60/90 days forward, compare against actuals. All 12 tests were run offline with the same model code used in production.
 
 | Cutoff | Horizon | Actual | Predicted | MAPE | CI Covers Actual |
 |---|---|---|---|---|---|
-| Apr 2025 | 30d | $424,835 | $346,768 | 18.4% | ✅ Yes |
-| Apr 2025 | 60d | $840,034 | $563,752 | 32.9% | ✅ Yes |
-| Apr 2025 | 90d | $965,680 | $842,002 | 12.8% | ✅ Yes |
-| Jul 2025 | 30d | $148,409 | $338,124 | 127.8% | ❌ No |
-| Jul 2025 | 60d | $290,782 | $743,538 | 155.7% | ❌ No |
-| Jul 2025 | 90d | $484,565 | $1,230,752 | 154.0% | ❌ No |
-| Oct 2025 | 30d | $233,890 | $271,472 | 16.1% | ✅ Yes |
-| Oct 2025 | 60d | $783,531 | $622,568 | 20.5% | ✅ Yes |
-| Oct 2025 | 90d | $2,688,006 | $1,039,278 | 61.3% | ❌ No |
-| Jan 2026 | 30d | $255,198 | $249,703 | 2.2% | ✅ Yes |
-| Jan 2026 | 60d | $590,724 | $505,634 | 14.4% | ✅ Yes |
-| Jan 2026 | 90d | $958,142 | $731,210 | 23.7% | ✅ Yes |
+| Apr 2025 | 30d | $424,835 | $346,768 | 18.4% | Yes |
+| Apr 2025 | 60d | $840,034 | $563,752 | 32.9% | Yes |
+| Apr 2025 | 90d | $965,680 | $842,002 | 12.8% | Yes |
+| Jul 2025 | 30d | $148,409 | $338,124 | 127.8% | No |
+| Jul 2025 | 60d | $290,782 | $743,538 | 155.7% | No |
+| Jul 2025 | 90d | $484,565 | $1,230,752 | 154.0% | No |
+| Oct 2025 | 30d | $233,890 | $271,472 | 16.1% | Yes |
+| Oct 2025 | 60d | $783,531 | $622,568 | 20.5% | Yes |
+| Oct 2025 | 90d | $2,688,006 | $1,039,278 | 61.3% | No |
+| Jan 2026 | 30d | $255,198 | $249,703 | 2.2% | Yes |
+| Jan 2026 | 60d | $590,724 | $505,634 | 14.4% | Yes |
+| Jan 2026 | 90d | $958,142 | $731,210 | 23.7% | Yes |
 
-**Summary:** 30d MAPE 41%, coverage 75% · 60d MAPE 56%, coverage 75% · 90d MAPE 63%, coverage 50%
+**Coverage summary:** 30d = 75% · 60d = 75% · 90d = 50%
 
-### Why MAPE Is the Wrong Metric for Probabilistic Forecasts
+### Why Coverage Probability Matters More Than MAPE
 
-This model produces **ranges**, not single numbers. Evaluating a range forecast by comparing only the point estimate to the actual is like grading a confidence interval on whether its midpoint was exactly right — it ignores the entire point of the tool.
+This tool produces ranges, not single numbers. Evaluating a range forecast by comparing its midpoint to the actual is like grading a weather forecast on whether it rained exactly 40% that day. MAPE measures point accuracy; it tells you nothing about whether the stated interval was honest.
 
-**The right metric is coverage probability:** what fraction of actual values fall inside the stated prediction interval? For an 80% CI, the target is 80%.
+Coverage probability is the right metric: what fraction of actual outcomes fall inside the stated prediction interval? For an 80% CI, the target is 80%.
 
-| Window | Observed Coverage | Target (80% CI) |
+| Window | Observed Coverage | Target |
 |---|---|---|
-| 30 days | **75%** | 80% |
-| 60 days | **75%** | 80% |
-| 90 days | **50%** | 80% |
+| 30 days | 75% | 80% |
+| 60 days | 75% | 80% |
+| 90 days | 50% | 80% |
 
 The 30d and 60d coverage is close to target. The 90d undercoverage has two structural causes:
 
-1. **The Jul 2025 cutoff** — After a strong Apr–May 2025 (≈$418K/month), the model extrapolated upward momentum. In reality Jul–Sep 2025 dipped to ≈$148–207K/month (summer slowdown). Any model trained on < 3 years of data will struggle with mid-year trend reversals.
+**Jul 2025 cutoff:** After a strong Apr–May 2025 (≈$418K/month), the model extrapolated growth momentum into summer. In reality, Jul–Sep 2025 dipped to ≈$148–207K/month. Any model trained on fewer than 3 years of data will struggle with mid-year trend reversals that contradict the recent trend direction.
 
-2. **The Oct 2025 cutoff** — Nov–Dec 2025 produced $2.4M of the $2.7M in that 90-day window. With only one historical Q4 season in training data, Prophet underestimates the holiday spike magnitude. The point estimate was $1.04M; the actual was $2.69M.
+**Oct 2025 cutoff:** Nov–Dec 2025 produced $2.4M out of $2.7M in that 90-day window. With only one historical Q4 season in training data, Prophet correctly identifies the timing of the holiday spike but cannot reliably estimate its magnitude. The CI upper bound reached $1.82M — still below the actual $2.69M.
 
-**Practical implication for agencies:** Use 30-day forecasts for tactical planning (coverage ≈ 75%). Treat 90-day forecasts as directional ranges, not targets. The wide CI upper bound correctly signals high uncertainty for Q4.
-
----
-
-## Project Structure
-
-```
-netexlir/
-├── run.sh                  # Scoring entry point — ./run.sh [DATA_DIR] [MODEL] [OUTPUT]
-├── requirements.txt        # Pinned dependencies
-├── app.py                  # Streamlit dashboard (8 tabs)
-├── README.md
-├── DEMO.md                 # 2-minute presentation script
-│
-├── data/                   # Sample CSVs (replaced by judges at eval time)
-│   ├── bing_campaign_stats.csv
-│   ├── google_ads_campaign_stats.csv
-│   └── meta_ads_campaign_stats.csv
-│
-├── pickle/
-│   └── model.pkl           # Pre-trained Prophet models (444 KB)
-│
-├── src/
-│   ├── generate_features.py  # Step 1: CSVs → parquet feature store
-│   ├── predict.py            # Step 2: features + pkl → predictions.csv
-│   ├── train.py              # One-time model training (regenerates pkl)
-│   ├── loader.py             # Schema-robust CSV ingestion with alias detection
-│   ├── forecaster.py         # Prophet models, 30/60/90d forecasts, model cache
-│   ├── budget_sim.py         # Budget simulation with log(spend) diminishing returns
-│   ├── anomaly.py            # Rolling z-score anomaly detection
-│   └── llm.py                # Google Gemini API integration (4 prompt functions)
-│
-└── output/                 # Generated at run time (not committed)
-    └── predictions.csv
-```
-
----
-
-## Setup
-
-### 1. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Set your Google API key (for AI insights)
-
-```bash
-export GOOGLE_API_KEY=AIza...
-```
-
----
-
-## How to Run
-
-### Run the scoring pipeline (judges use this)
-
-```bash
-./run.sh                                          # uses defaults: ./data  ./pickle/model.pkl  ./output/predictions.csv
-./run.sh /path/to/test_data ./pickle/model.pkl ./output/predictions.csv   # custom paths
-```
-
-Output: `output/predictions.csv` — 211 rows with columns:
-`window_days, level, entity, revenue_lower, revenue_point, revenue_upper, spend_point, roas_lower, roas_point, roas_upper`
-
-Levels produced: `aggregate`, `channel`, `campaign_type`, `campaign`, `trailing_30d`, `anomaly`
-
----
-
-### Run the full Streamlit dashboard (recommended)
-
-```bash
-streamlit run app.py
-```
-
-Opens at **http://localhost:8501**
-
-- The sidebar auto-loads all three CSV files from `data/`.
-- Forecast training runs on first load (~45 seconds). Results are cached for the session.
-- Enter your Google API Key in the sidebar and click **Generate Insights** in the AI Insights tab.
-- Set per-channel daily budgets in the sidebar and click **Run Budget Simulation**.
-
----
-
-### Run individual pipeline modules from Python
-
-#### Load and inspect data
-
-```python
-from src.loader import load_daily_aggregate, load_daily_by_channel, campaign_summary
-
-daily = load_daily_aggregate()
-print(daily.tail())
-
-channel_data = load_daily_by_channel()  # {'google': df, 'meta': df, 'bing': df}
-
-summary = campaign_summary()            # all 136 campaigns ranked by revenue
-print(summary.head(10))
-```
-
-#### Run aggregate forecast
-
-```python
-from src.loader import load_daily_aggregate
-from src.forecaster import run_aggregate_forecast, trailing_actuals
-
-daily = load_daily_aggregate()
-trailing = trailing_actuals(daily, days=30)
-
-forecast = run_aggregate_forecast(daily, uncertainty_samples=500)
-
-for rev in forecast['revenue_forecasts']:
-    print(f"{rev['days']}d: ${rev['lower']:,.0f} – ${rev['upper']:,.0f}  (point: ${rev['point']:,.0f})")
-```
-
-#### Run channel-level forecasts
-
-```python
-from src.loader import load_daily_by_channel
-from src.forecaster import run_channel_forecasts
-
-channel_data = load_daily_by_channel()
-ch_forecasts = run_channel_forecasts(channel_data, uncertainty_samples=300)
-
-for ch, result in ch_forecasts.items():
-    rev30 = result['revenue_forecasts'][0]
-    print(f"{ch}: ${rev30['point']:,.0f}  (CI: ${rev30['lower']:,.0f}–${rev30['upper']:,.0f})")
-```
-
-#### Run budget simulation
-
-```python
-from src.loader import load_daily_by_channel
-from src.budget_sim import simulate_budget
-
-channel_data = load_daily_by_channel()
-
-# Daily budgets per channel in USD
-budget = {'google': 3000.0, 'meta': 500.0, 'bing': 200.0}
-
-sim = simulate_budget(channel_data, budget, uncertainty_samples=300)
-
-for days, p in sim['portfolio'].items():
-    print(f"{days}d: ${p['revenue_point']:,.0f}  ROAS {p['roas_point']:.2f}x")
-```
-
-#### Detect anomalies
-
-```python
-from src.loader import load_daily_aggregate, load_daily_by_channel
-from src.anomaly import detect_anomalies
-
-daily = load_daily_aggregate()
-channel_data = load_daily_by_channel()
-
-anomalies = detect_anomalies(daily, channel_data=channel_data, lookback_days=90)
-
-for a in anomalies:
-    print(f"[{a['date']}] {a['severity'].upper()} | {a['channel']} | {a['description']}")
-```
-
-#### Generate AI insights with Gemini
-
-```python
-import os
-os.environ['GOOGLE_API_KEY'] = 'AIza...'   # or set in shell before running
-
-from src.loader import load_daily_aggregate, load_daily_by_channel
-from src.forecaster import run_aggregate_forecast, run_channel_forecasts, trailing_actuals
-from src.anomaly import detect_anomalies
-from src.llm import get_insights
-
-daily = load_daily_aggregate()
-channel_data = load_daily_by_channel()
-trailing = trailing_actuals(daily, days=30)
-forecast = run_aggregate_forecast(daily, uncertainty_samples=500)
-ch_forecasts = run_channel_forecasts(channel_data, uncertainty_samples=300)
-anomalies = detect_anomalies(daily, channel_data=channel_data)
-
-insights = get_insights(
-    forecast_result=forecast,
-    trailing=trailing,
-    anomaly_list=anomalies,
-    channel_results=ch_forecasts,
-)
-
-print(insights['forecast_explanation'])
-print(insights['risk_flags'])
-```
-
-#### Dry run (no API key required — previews prompts only)
-
-```python
-from src.llm import get_insights_dry_run
-result = get_insights_dry_run(forecast, trailing, anomalies, ch_forecasts)
-print(result['note'])
-print(result['forecast_explanation_prompt'])
-```
-
-#### Override the Gemini model
-
-```bash
-export NETEXLIR_MODEL=gemini-2.5-flash-preview-05-20
-```
-
-Default is `gemini-2.0-flash`.
+For agencies, this means: use 30-day forecasts for media budget decisions (coverage ≈ 75%). Treat 90-day forecasts as directional ranges. Flag Q4 separately and widen the planning buffer to account for holiday spike uncertainty.
 
 ---
 
@@ -400,43 +190,143 @@ CSV files (Google / Meta / Bing)
         │
         ▼
   src/loader.py
-  ├── load_daily_aggregate()        → single daily ds/revenue/spend DataFrame
-  ├── load_daily_by_channel()       → {channel: daily_df}
-  ├── load_daily_by_campaign_type() → {channel/type: daily_df}
-  └── load_daily_by_campaign()      → {channel/campaign: daily_df}
+  ├── load_daily_aggregate()          → single daily ds/revenue/spend DataFrame
+  ├── load_daily_by_channel()         → {channel: daily_df}
+  ├── load_daily_by_campaign_type()   → {channel/type: daily_df}
+  └── load_daily_by_campaign()        → {channel/campaign: daily_df}
         │
         ▼
   src/forecaster.py
-  ├── run_aggregate_forecast()      → 30/60/90d revenue + ROAS with 80% CI
-  ├── run_channel_forecasts()       → per-channel forecast dicts
-  ├── run_slice_forecast()          → generic Prophet fit for any slice
-  └── _MODEL_CACHE                  → in-memory cache (MD5 hash keyed)
+  ├── run_aggregate_forecast()        → 30/60/90d revenue + ROAS with 80% CI
+  ├── run_channel_forecasts()         → per-channel forecast dicts
+  ├── run_campaign_type_forecasts()   → per-campaign-type forecast dicts
+  ├── run_slice_forecast()            → generic Prophet fit for any slice
+  └── _MODEL_CACHE                    → in-memory cache (MD5 hash keyed)
         │
-        ├──────────────────────────────────┐
-        ▼                                  ▼
-  src/budget_sim.py               src/anomaly.py
-  simulate_budget()               detect_anomalies()
-  marginal_roas_curve()           anomaly_summary()
-        │                                  │
-        └──────────────┬───────────────────┘
-                       ▼
-              src/llm.py  (Google Gemini)
-              ├── explain_forecast()
-              ├── explain_budget_simulation()
-              ├── interpret_anomalies()
-              ├── flag_risks()
-              └── get_insights()  ← unified entry point
-                       │
-                       ▼
-                  app.py  (Streamlit UI)
+        ├──────────────────────────────────────┐
+        ▼                                      ▼
+  src/budget_sim.py                   src/anomaly.py
+  simulate_budget()                   detect_anomalies()
+  marginal_roas_curve()               anomaly_summary()
+        │                                      │
+        └─────────────────┬────────────────────┘
+                          ▼
+                 src/llm.py  (Google Gemini API)
+                 ├── explain_forecast()
+                 ├── explain_budget_simulation()
+                 ├── interpret_anomalies()
+                 ├── flag_risks()
+                 └── get_insights()
+                          │
+                          ▼
+                     app.py  (Streamlit UI — 8 tabs)
+```
+
+### Scoring Pipeline (separate from the UI)
+
+```
+run.sh
+  │
+  ├── src/generate_features.py   reads CSVs → parquet feature store
+  └── src/predict.py             loads pkl + features → predictions.csv
+```
+
+---
+
+## Project Structure
+
+```
+netexlir/
+├── run.sh                        # Scoring entry point
+├── requirements.txt              # Dependencies (Streamlit app)
+├── requirements-pipeline.txt     # Additional deps for scoring pipeline
+├── .python-version               # Pins Python 3.12
+├── packages.txt                  # System packages for Streamlit Cloud
+├── app.py                        # Streamlit dashboard (8 tabs)
+├── README.md
+├── DEMO.md                       # 2-minute presentation script
+│
+├── data/                         # Sample CSVs (replaced at eval time)
+│   ├── bing_campaign_stats.csv
+│   ├── google_ads_campaign_stats.csv
+│   └── meta_ads_campaign_stats.csv
+│
+├── pickle/
+│   └── model.pkl                 # Pre-trained Prophet models (444 KB)
+│
+├── src/
+│   ├── generate_features.py      # Step 1: CSVs → parquet
+│   ├── predict.py                # Step 2: parquet + pkl → predictions.csv
+│   ├── train.py                  # One-time: trains and saves pkl
+│   ├── loader.py                 # Schema-robust CSV ingestion
+│   ├── forecaster.py             # Prophet models and cache
+│   ├── budget_sim.py             # Budget simulation
+│   ├── anomaly.py                # Anomaly detection
+│   └── llm.py                    # Gemini API integration
+│
+└── output/                       # Generated at run time (not committed)
+    └── predictions.csv
+```
+
+---
+
+## Setup and Running
+
+### Streamlit Dashboard (recommended for demos)
+
+The live app is at **https://netexlir.streamlit.app**
+
+To run locally:
+
+```bash
+pip install -r requirements.txt
+export GOOGLE_API_KEY=AIza...
+streamlit run app.py
+```
+
+Opens at http://localhost:8501. Prophet models train on first load (~45 seconds), then results are cached for the session. Set per-channel daily budgets in the sidebar and click Run Budget Simulation to see projections.
+
+### Scoring Pipeline
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-pipeline.txt
+
+# Run with defaults (data/ model/ output/)
+./run.sh
+
+# Run with custom paths
+./run.sh /path/to/test_data ./pickle/model.pkl ./output/predictions.csv
+```
+
+Output: `output/predictions.csv` with 211 rows.
+
+Columns: `window_days, level, entity, revenue_lower, revenue_point, revenue_upper, spend_point, roas_lower, roas_point, roas_upper`
+
+Levels: `aggregate`, `channel`, `campaign_type`, `campaign`, `trailing_30d`, `anomaly`
+
+### Retrain the Model
+
+```bash
+python3 src/train.py --output ./pickle/model.pkl
+```
+
+Trains 5 Prophet models (aggregate revenue, aggregate spend, Bing, Meta, Google channel revenue) and saves them to `pickle/model.pkl` (~444 KB). Set `SEED=42` is applied before training for reproducibility.
+
+### Environment Variables
+
+```bash
+export GOOGLE_API_KEY=AIza...          # required for AI Insights tab
+export NETEXLIR_MODEL=gemini-2.0-flash # optional: change Gemini model
+export DATA_DIR=/path/to/csvs          # optional: override data directory
 ```
 
 ---
 
 ## Limitations
 
-- **Attribution is as-is** — no cross-channel deduplication. A single sale may appear in both Google and Meta reports.
-- **No external signals** — the model does not ingest GA4, Shopify, email, or macro-economic data.
-- **Bing excluded from channel forecasts** — too few non-zero revenue days for a stable Prophet fit.
-- **Prophet does not extrapolate well beyond the training range** — 90-day forecasts carry significantly more uncertainty than 30-day.
-- **Gemini API required** for AI insights — dry-run mode shows prompts without calling the API.
+- **Attribution is as-is.** No cross-channel deduplication. A single conversion may appear in both Google and Meta reports.
+- **No external signals.** The model does not use GA4, Shopify, email, or macroeconomic data. All signals come from the ad-platform CSVs.
+- **Bing excluded from channel forecasts.** Fewer than 90 non-zero revenue days — insufficient for stable seasonal decomposition.
+- **90-day forecasts carry high uncertainty.** Especially around Q4, where one season of training data is not enough to reliably estimate holiday spike magnitude.
+- **Gemini API required for AI Insights.** A dry-run mode is available that previews prompts without making API calls.
