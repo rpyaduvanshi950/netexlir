@@ -142,6 +142,51 @@ Types include revenue spikes/drops, ROAS collapses, and spend-revenue decoupling
 
 ---
 
+## Model Validation — Why Coverage Probability Beats MAPE
+
+### Walk-Forward Backtest Results
+
+We ran a 4-point walk-forward validation: train on data before a cutoff, predict the next 30/60/90 days, compare against actuals.
+
+| Cutoff | Horizon | Actual | Predicted | MAPE | CI Covers Actual |
+|---|---|---|---|---|---|
+| Apr 2025 | 30d | $424,835 | $346,768 | 18.4% | ✅ Yes |
+| Apr 2025 | 60d | $840,034 | $563,752 | 32.9% | ✅ Yes |
+| Apr 2025 | 90d | $965,680 | $842,002 | 12.8% | ✅ Yes |
+| Jul 2025 | 30d | $148,409 | $338,124 | 127.8% | ❌ No |
+| Jul 2025 | 60d | $290,782 | $743,538 | 155.7% | ❌ No |
+| Jul 2025 | 90d | $484,565 | $1,230,752 | 154.0% | ❌ No |
+| Oct 2025 | 30d | $233,890 | $271,472 | 16.1% | ✅ Yes |
+| Oct 2025 | 60d | $783,531 | $622,568 | 20.5% | ✅ Yes |
+| Oct 2025 | 90d | $2,688,006 | $1,039,278 | 61.3% | ❌ No |
+| Jan 2026 | 30d | $255,198 | $249,703 | 2.2% | ✅ Yes |
+| Jan 2026 | 60d | $590,724 | $505,634 | 14.4% | ✅ Yes |
+| Jan 2026 | 90d | $958,142 | $731,210 | 23.7% | ✅ Yes |
+
+**Summary:** 30d MAPE 41%, coverage 75% · 60d MAPE 56%, coverage 75% · 90d MAPE 63%, coverage 50%
+
+### Why MAPE Is the Wrong Metric for Probabilistic Forecasts
+
+This model produces **ranges**, not single numbers. Evaluating a range forecast by comparing only the point estimate to the actual is like grading a confidence interval on whether its midpoint was exactly right — it ignores the entire point of the tool.
+
+**The right metric is coverage probability:** what fraction of actual values fall inside the stated prediction interval? For an 80% CI, the target is 80%.
+
+| Window | Observed Coverage | Target (80% CI) |
+|---|---|---|
+| 30 days | **75%** | 80% |
+| 60 days | **75%** | 80% |
+| 90 days | **50%** | 80% |
+
+The 30d and 60d coverage is close to target. The 90d undercoverage has two structural causes:
+
+1. **The Jul 2025 cutoff** — After a strong Apr–May 2025 (≈$418K/month), the model extrapolated upward momentum. In reality Jul–Sep 2025 dipped to ≈$148–207K/month (summer slowdown). Any model trained on < 3 years of data will struggle with mid-year trend reversals.
+
+2. **The Oct 2025 cutoff** — Nov–Dec 2025 produced $2.4M of the $2.7M in that 90-day window. With only one historical Q4 season in training data, Prophet underestimates the holiday spike magnitude. The point estimate was $1.04M; the actual was $2.69M.
+
+**Practical implication for agencies:** Use 30-day forecasts for tactical planning (coverage ≈ 75%). Treat 90-day forecasts as directional ranges, not targets. The wide CI upper bound correctly signals high uncertainty for Q4.
+
+---
+
 ## Project Structure
 
 ```
