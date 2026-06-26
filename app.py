@@ -26,7 +26,7 @@ from src.budget_sim import simulate_budget
 
 st.set_page_config(
     page_title="Netexlir · Forecast",
-    page_icon="📈",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -223,14 +223,14 @@ with st.spinner("Training Prophet models — first run ~60 s, then cached…"):
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
 tab_fcst, tab_ch, tab_budget, tab_anom, tab_ai, tab_val, tab_sub, tab_demo = st.tabs([
-    "📊 Forecast",
-    "📡 Channels & Types",
-    "💰 Budget Sim",
-    "🚨 Anomalies",
-    "🤖 AI Insights",
-    "✅ Validation",
-    "📋 Submission",
-    "🎬 Demo Guide",
+    "Forecast",
+    "Channels & Types",
+    "Budget Simulation",
+    "Anomalies",
+    "AI Insights",
+    "Validation",
+    "Submission",
+    "Demo Guide",
 ])
 
 
@@ -592,18 +592,18 @@ with tab_val:
 
     # Pre-computed walk-forward results (computed offline, see README)
     wf_data = [
-        {"Cutoff":"Apr 2025","Window":"30d","Actual":424835,"Predicted":346768,"MAPE":18.4,"Covers":"✅"},
-        {"Cutoff":"Apr 2025","Window":"60d","Actual":840034,"Predicted":563752,"MAPE":32.9,"Covers":"✅"},
-        {"Cutoff":"Apr 2025","Window":"90d","Actual":965680,"Predicted":842002,"MAPE":12.8,"Covers":"✅"},
-        {"Cutoff":"Jul 2025","Window":"30d","Actual":148409,"Predicted":338124,"MAPE":127.8,"Covers":"❌"},
-        {"Cutoff":"Jul 2025","Window":"60d","Actual":290782,"Predicted":743538,"MAPE":155.7,"Covers":"❌"},
-        {"Cutoff":"Jul 2025","Window":"90d","Actual":484565,"Predicted":1230752,"MAPE":154.0,"Covers":"❌"},
-        {"Cutoff":"Oct 2025","Window":"30d","Actual":233890,"Predicted":271472,"MAPE":16.1,"Covers":"✅"},
-        {"Cutoff":"Oct 2025","Window":"60d","Actual":783531,"Predicted":622568,"MAPE":20.5,"Covers":"✅"},
-        {"Cutoff":"Oct 2025","Window":"90d","Actual":2688006,"Predicted":1039278,"MAPE":61.3,"Covers":"❌"},
-        {"Cutoff":"Jan 2026","Window":"30d","Actual":255198,"Predicted":249703,"MAPE":2.2,"Covers":"✅"},
-        {"Cutoff":"Jan 2026","Window":"60d","Actual":590724,"Predicted":505634,"MAPE":14.4,"Covers":"✅"},
-        {"Cutoff":"Jan 2026","Window":"90d","Actual":958142,"Predicted":731210,"MAPE":23.7,"Covers":"✅"},
+        {"Cutoff":"Apr 2025","Window":"30d","Actual":424835,"Predicted":346768,"MAPE":18.4,"CI Covers":"Yes"},
+        {"Cutoff":"Apr 2025","Window":"60d","Actual":840034,"Predicted":563752,"MAPE":32.9,"CI Covers":"Yes"},
+        {"Cutoff":"Apr 2025","Window":"90d","Actual":965680,"Predicted":842002,"MAPE":12.8,"CI Covers":"Yes"},
+        {"Cutoff":"Jul 2025","Window":"30d","Actual":148409,"Predicted":338124,"MAPE":127.8,"CI Covers":"No"},
+        {"Cutoff":"Jul 2025","Window":"60d","Actual":290782,"Predicted":743538,"MAPE":155.7,"CI Covers":"No"},
+        {"Cutoff":"Jul 2025","Window":"90d","Actual":484565,"Predicted":1230752,"MAPE":154.0,"CI Covers":"No"},
+        {"Cutoff":"Oct 2025","Window":"30d","Actual":233890,"Predicted":271472,"MAPE":16.1,"CI Covers":"Yes"},
+        {"Cutoff":"Oct 2025","Window":"60d","Actual":783531,"Predicted":622568,"MAPE":20.5,"CI Covers":"Yes"},
+        {"Cutoff":"Oct 2025","Window":"90d","Actual":2688006,"Predicted":1039278,"MAPE":61.3,"CI Covers":"No"},
+        {"Cutoff":"Jan 2026","Window":"30d","Actual":255198,"Predicted":249703,"MAPE":2.2,"CI Covers":"Yes"},
+        {"Cutoff":"Jan 2026","Window":"60d","Actual":590724,"Predicted":505634,"MAPE":14.4,"CI Covers":"Yes"},
+        {"Cutoff":"Jan 2026","Window":"90d","Actual":958142,"Predicted":731210,"MAPE":23.7,"CI Covers":"Yes"},
     ]
     wf_df = pd.DataFrame(wf_data)
     wf_df["Actual"]    = wf_df["Actual"].apply(_fmt_usd)
@@ -659,9 +659,9 @@ inside the stated prediction interval?
 
 | Window | Coverage | Target | Assessment |
 |---|---|---|---|
-| 30 days | 75% | 80% | ✅ Close to target — reliable for tactical planning |
-| 60 days | 75% | 80% | ✅ Close to target — directional planning |
-| 90 days | 50% | 80% | ⚠️ Undercoverage driven by two structural causes (see below) |
+| 30 days | 75% | 80% | Close to target — reliable for tactical planning |
+| 60 days | 75% | 80% | Close to target — directional planning |
+| 90 days | 50% | 80% | Undercoverage driven by two structural causes (see below) |
 
 **Two structural causes of 90d undercoverage:**
 
@@ -689,7 +689,7 @@ the model's CI upper bound is the conservative budget planning figure for Nov–
     c1.metric("Actual (Oct–Dec 2025)", _fmt_usd(bt["actual_90d"]))
     c2.metric("Predicted", _fmt_usd(bt["predicted_90d"]))
     c3.metric("MAPE", f"{bt['mape']:.1f}%")
-    c4.metric("CI covers actual", "Yes ✅" if bt["ci_covers"] else "No ❌")
+    c4.metric("CI covers actual", "Yes" if bt["ci_covers"] else "No")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -698,7 +698,7 @@ the model's CI upper bound is the conservative budget planning figure for Nov–
 
 with tab_sub:
     st.header("Submission Structure & How to Run")
-    st.caption("Follows the AIgnition 3.0 Hackathon Submission Guide exactly.")
+    st.caption("Repository layout, scoring pipeline, and output format.")
 
     st.subheader("Repository Layout")
     st.code("""
@@ -732,12 +732,9 @@ netexlir/
 """, language="text")
 
     st.divider()
-    st.subheader("Scoring Pipeline (what the judges run)")
+    st.subheader("Scoring Pipeline")
 
-    st.markdown("""
-The submission guide says:
-> *Clone → install → drop our data into `data/` → `./run.sh` → read predictions from `output/`*
-""")
+    st.markdown("Clone the repo, install dependencies, replace the sample data with yours, and run one command.")
 
     st.code("""# 1. Clone
 git clone <your-repo-url>
@@ -823,8 +820,8 @@ python3 --version   # Python 3.12
         "README.md with architecture and run instructions":               True,
     }
     for item, ok in checks.items():
-        icon = "✅" if ok else "❌"
-        st.write(f"{icon} {item}")
+        status = "Pass" if ok else "Fail"
+        st.write(f"{status}  —  {item}")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -833,18 +830,18 @@ python3 --version   # Python 3.12
 
 with tab_demo:
     st.header("2-Minute Demo Walkthrough")
-    st.caption("Follow this script exactly for the AIgnition 3.0 presentation.")
+    st.caption("A suggested flow for walking through the app during the presentation.")
 
     st.info(
-        "**Before you start:** open this app at http://localhost:8501 · "
-        "paste your Google API Key in the sidebar · "
-        "set sidebar budgets (Google $4000, Meta $800, Bing $200)"
+        "Before presenting: open the app at http://localhost:8501, "
+        "paste your Google API Key in the sidebar, "
+        "and set budgets to Google $4,000 · Meta $800 · Bing $200."
     )
 
     steps = [
         {
             "time": "0:00 – 0:20",
-            "tab": "📊 Forecast",
+            "tab": "Forecast",
             "title": "The Problem & The Forecast",
             "say": (
                 "We're solving the hardest question a digital marketing agency faces: "
@@ -857,7 +854,7 @@ with tab_demo:
         },
         {
             "time": "0:20 – 0:35",
-            "tab": "📊 Forecast",
+            "tab": "Forecast",
             "title": "Why the Forecast Looks Lower Than Last Month",
             "say": (
                 "Notice the blue info box explaining why the forecast is lower than trailing actuals. "
@@ -869,7 +866,7 @@ with tab_demo:
         },
         {
             "time": "0:35 – 0:50",
-            "tab": "📡 Channels & Types",
+            "tab": "Channels & Types",
             "title": "Channel & Campaign-Type Breakdown",
             "say": (
                 "Google drives 95% of forecast revenue at a 5.96× ROAS. "
@@ -880,7 +877,7 @@ with tab_demo:
         },
         {
             "time": "0:50 – 1:10",
-            "tab": "💰 Budget Sim",
+            "tab": "Budget Simulation",
             "title": "Budget Simulation with Diminishing Returns",
             "say": (
                 "Now for the most valuable feature for agencies: budget scenario planning. "
@@ -891,7 +888,7 @@ with tab_demo:
         },
         {
             "time": "1:10 – 1:20",
-            "tab": "💰 Budget Sim",
+            "tab": "Budget Simulation",
             "title": "Diminishing Returns Encoded",
             "say": (
                 "The uplift is positive but modest — not linear with the budget increase. "
@@ -903,7 +900,7 @@ with tab_demo:
         },
         {
             "time": "1:20 – 1:35",
-            "tab": "🤖 AI Insights",
+            "tab": "AI Insights",
             "title": "Gemini-Powered Causal Summaries",
             "say": (
                 "Click Generate Insights. Gemini makes 3–4 API calls: "
@@ -914,7 +911,7 @@ with tab_demo:
         },
         {
             "time": "1:35 – 1:50",
-            "tab": "✅ Validation",
+            "tab": "Validation",
             "title": "We Measured Ourselves",
             "say": (
                 "We ran a 4-point walk-forward backtest. "
@@ -927,7 +924,7 @@ with tab_demo:
         },
         {
             "time": "1:50 – 2:00",
-            "tab": "📋 Submission",
+            "tab": "Submission",
             "title": "Fully Submission-Ready",
             "say": (
                 "The submission checklist is all green. "
@@ -940,14 +937,13 @@ with tab_demo:
     ]
 
     for i, step in enumerate(steps, 1):
-        with st.expander(f"**Step {i} ({step['time']})** — {step['title']}", expanded=(i == 1)):
+        with st.expander(f"Step {i} · {step['time']} · {step['title']}", expanded=(i == 1)):
             col_a, col_b = st.columns([2, 1])
             with col_a:
-                st.markdown(f"**What to say:**")
-                st.markdown(f"> {step['say']}")
+                st.markdown(step['say'])
             with col_b:
-                st.markdown(f"**Active tab:** `{step['tab']}`")
-                st.markdown(f"**Action:** {step['click']}")
+                st.caption(f"Tab: {step['tab']}")
+                st.caption(step['click'])
 
     st.divider()
     st.subheader("Key Numbers to Know by Heart")
@@ -965,32 +961,3 @@ with tab_demo:
         st.metric("LLM Calls per Run", "3–4 Gemini API calls")
         st.metric("Scoring Pipeline", "./run.sh → predictions.csv")
 
-    st.divider()
-    st.subheader("Likely Judge Questions & Answers")
-    qa = [
-        ("Why is the 30d forecast lower than trailing actuals?",
-         "Trailing 30d captured the May peak. June is seasonally 70% lower based on 2025 data. "
-         "Prophet correctly predicts the seasonal dip, not a business problem. "
-         "See the monthly revenue chart — June 2025 was $127K vs May 2025's $418K."),
-        ("How did you handle diminishing returns?",
-         "We include log₁p(daily_spend) as an additional regressor inside Prophet. "
-         "This means the model learns a sub-linear spend→revenue relationship from history. "
-         "Doubling spend in the simulator produces less than double the revenue."),
-        ("What's the model accuracy?",
-         "30d coverage probability 75% (target 80%) in walk-forward backtest. "
-         "MAPE matters less for probabilistic range forecasts — coverage probability is the right metric."),
-        ("Why Prophet over XGBoost or SARIMA?",
-         "Prophet handles weekly + yearly seasonality, promo holidays (Black Friday, etc.), "
-         "and produces native Monte Carlo CIs out of the box. "
-         "XGBoost needs manual feature engineering for temporal patterns; SARIMA doesn't support regressors easily."),
-        ("Can this handle new data?",
-         "Yes. The pipeline reads whatever CSVs are in data/ at run time. "
-         "Column names are auto-detected from aliases (date, Date, TimePeriod, etc.). "
-         "Missing channels are skipped with a warning rather than crashing."),
-        ("Why Gemini and not OpenAI?",
-         "The brief listed Gemini as an explicitly accepted LLM. "
-         "google-genai is the latest SDK; the model is configurable via NETEXLIR_MODEL env var."),
-    ]
-    for q, a in qa:
-        with st.expander(q):
-            st.write(a)
