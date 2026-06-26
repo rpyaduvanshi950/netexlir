@@ -33,9 +33,9 @@ We also found that budget simulation tools usually assume linear returns: spend 
 
 | Platform | File | Date Range | Campaigns |
 |---|---|---|---|
-| Google Ads | `dataset/google_ads_campaign_stats.csv` | Jan 2024 – Jun 2026 | 84 |
-| Meta Ads | `dataset/meta_ads_campaign_stats.csv` | May 2024 – Jun 2026 | 30 |
-| Bing Ads | `dataset/bing_campaign_stats.csv` | May 2024 – Jun 2026 | 22 |
+| Google Ads | `data/google_ads_campaign_stats.csv` | Jan 2024 – Jun 2026 | 84 |
+| Meta Ads | `data/meta_ads_campaign_stats.csv` | May 2024 – Jun 2026 | 30 |
+| Bing Ads | `data/bing_campaign_stats.csv` | May 2024 – Jun 2026 | 22 |
 
 **Combined:** 887 daily rows · 136 campaigns · $11.09M total revenue · $2.18M total spend
 
@@ -191,23 +191,32 @@ The 30d and 60d coverage is close to target. The 90d undercoverage has two struc
 
 ```
 netexlir/
-├── app.py                  # Streamlit UI (Phase 6)
-├── dataset/
+├── run.sh                  # Scoring entry point — ./run.sh [DATA_DIR] [MODEL] [OUTPUT]
+├── requirements.txt        # Pinned dependencies
+├── app.py                  # Streamlit dashboard (8 tabs)
+├── README.md
+├── DEMO.md                 # 2-minute presentation script
+│
+├── data/                   # Sample CSVs (replaced by judges at eval time)
 │   ├── bing_campaign_stats.csv
 │   ├── google_ads_campaign_stats.csv
 │   └── meta_ads_campaign_stats.csv
+│
+├── pickle/
+│   └── model.pkl           # Pre-trained Prophet models (444 KB)
+│
 ├── src/
-│   ├── loader.py           # CSV ingestion, daily aggregation, channel/campaign slices
-│   ├── forecaster.py       # Prophet models, model cache, 30/60/90d forecast functions
-│   ├── budget_sim.py       # Budget simulation with diminishing returns
-│   ├── anomaly.py          # Rolling z-score anomaly detection
-│   └── llm.py              # Google Gemini API integration (4 prompt functions)
-├── notes/
-│   ├── plan.md             # Phase checklist
-│   ├── data_profile.md     # Data dictionary and quality notes
-│   ├── methodology.md      # Methodology proposal
-│   └── forecast_validation.md
-└── prompt.txt              # Original project brief
+│   ├── generate_features.py  # Step 1: CSVs → parquet feature store
+│   ├── predict.py            # Step 2: features + pkl → predictions.csv
+│   ├── train.py              # One-time model training (regenerates pkl)
+│   ├── loader.py             # Schema-robust CSV ingestion with alias detection
+│   ├── forecaster.py         # Prophet models, 30/60/90d forecasts, model cache
+│   ├── budget_sim.py         # Budget simulation with log(spend) diminishing returns
+│   ├── anomaly.py            # Rolling z-score anomaly detection
+│   └── llm.py                # Google Gemini API integration (4 prompt functions)
+│
+└── output/                 # Generated at run time (not committed)
+    └── predictions.csv
 ```
 
 ---
@@ -217,7 +226,7 @@ netexlir/
 ### 1. Install dependencies
 
 ```bash
-pip install prophet pandas numpy plotly streamlit google-genai
+pip install -r requirements.txt
 ```
 
 ### 2. Set your Google API key (for AI insights)
@@ -230,6 +239,20 @@ export GOOGLE_API_KEY=AIza...
 
 ## How to Run
 
+### Run the scoring pipeline (judges use this)
+
+```bash
+./run.sh                                          # uses defaults: ./data  ./pickle/model.pkl  ./output/predictions.csv
+./run.sh /path/to/test_data ./pickle/model.pkl ./output/predictions.csv   # custom paths
+```
+
+Output: `output/predictions.csv` — 211 rows with columns:
+`window_days, level, entity, revenue_lower, revenue_point, revenue_upper, spend_point, roas_lower, roas_point, roas_upper`
+
+Levels produced: `aggregate`, `channel`, `campaign_type`, `campaign`, `trailing_30d`, `anomaly`
+
+---
+
 ### Run the full Streamlit dashboard (recommended)
 
 ```bash
@@ -238,7 +261,7 @@ streamlit run app.py
 
 Opens at **http://localhost:8501**
 
-- The sidebar auto-loads all three CSV files from `dataset/`.
+- The sidebar auto-loads all three CSV files from `data/`.
 - Forecast training runs on first load (~45 seconds). Results are cached for the session.
 - Enter your Google API Key in the sidebar and click **Generate Insights** in the AI Insights tab.
 - Set per-channel daily budgets in the sidebar and click **Run Budget Simulation**.
