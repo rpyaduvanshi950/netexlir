@@ -50,7 +50,7 @@ Results are ranked by severity and surfaced in a structured table with dates, ch
 
 ### AI Insights via Google Gemini
 
-Four structured prompt functions call the Gemini API (`gemini-2.5-flash`):
+Four structured prompt functions call the Gemini API (`gemini-3.5-flash`):
 
 - `explain_forecast()` — interprets the 30/60/90d forecast in business terms
 - `explain_budget_simulation()` — explains what a budget shift means for ROAS and efficiency
@@ -317,7 +317,7 @@ Trains 5 Prophet models (aggregate revenue, aggregate spend, Bing, Meta, Google 
 
 ```bash
 export GOOGLE_API_KEY=AIza...          # required for AI Insights tab
-export NETEXLIR_MODEL=gemini-2.5-flash # optional: change Gemini model
+export NETEXLIR_MODEL=gemini-3.5-flash # optional: change Gemini model
 export DATA_DIR=/path/to/csvs          # optional: override data directory
 ```
 

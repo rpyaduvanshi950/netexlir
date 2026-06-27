@@ -16,7 +16,7 @@ from google import genai
 from google.genai import types
 
 # Default model; override with NETEXLIR_MODEL env var
-_DEFAULT_MODEL = os.getenv("NETEXLIR_MODEL", "gemini-2.5-flash")
+_DEFAULT_MODEL = os.getenv("NETEXLIR_MODEL", "gemini-3.5-flash")
 _MAX_TOKENS = 600
 
 
